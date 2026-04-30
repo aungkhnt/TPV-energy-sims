@@ -8,7 +8,7 @@ Question : "How much radiation does the emitter produce, and at what wavelengths
 ""
 import numpy as np
 import matplotlib as mpt
-import TPVconfig
+from TPVconfig import TPVconfig
 import physics_utils
 # ##################################################################################
 # # Defining Constants in advance
@@ -95,7 +95,7 @@ class PlanckModel:
     def __init__(self, config: TPVconfig):
         self.cfg = config
         m_name = self.cfg.material_name.lower()
-        self.mat = self.MATERIALS.get(m_name, self.MATERIALS["blackbody"])
+        self.mat = TPVconfig.MATERIALS.get(m_name, TPVconfig.MATERIALS["blackbody"])
         self.h = self.cfg.h_planck
         self.c = self.cfg.c_light
         self.k = self.cfg.k_boltz
@@ -105,11 +105,14 @@ class PlanckModel:
     
     def _selective_emit(self, Lambda):
         Eg = self.mat["Eg"]
+        Eg = self.mat["Eg"]
+        if Eg == 0.0:
+            return np.ones_like(Lambda)
         Eg_bg = Eg * (1.602e-19)
         eps_low = self.mat["eps_low"]
         eps_high = self.mat["eps_high"]
 
-        lambda_bg = (self.h_planck * self.c_light) / Eg_bg
+        lambda_bg = (self.h * self.c) / Eg_bg
 
         return np.where(Lambda <= lambda_bg, eps_high, eps_low)
     
@@ -138,33 +141,44 @@ class PlanckModel:
 # Guard 
 
 if __name__ == "__main__":
-
-    cfg = TPVconfig(temp=2500, material_name = "germanium")
-
-    model = PlanckModel(cfg)
-
-    lambdas = np.linspace(cfg.lambda_min, cfg.lambda_max, 500)
-    curve = model._calculate_spectral_radiance(lambdas)
-    total_W = model.get_total_power(lambdas)
-
     import matplotlib.pyplot as plt
-    plt.plot(lambdas,curve)
-    plt.title(f"Total Power: {total_W:.2f} W/m^2")
+    from TPVconfig import TPVconfig
+
+    cfg = TPVconfig(temp=2500, material_name="blackbody",
+                    d=0.1, width_e=0.05, height_e=0.05, x_e=0, y_e=0)
+    model = PlanckModel(cfg)
+    lambdas = np.linspace(cfg.lambda_min, cfg.lambda_max, 500)
+
+    # --- Plot 1: Planck spectra at multiple temperatures ---
+    fig, ax = plt.subplots(figsize=(10, 6))
+    temps = [1000, 1500, 2000, 2500, 3000]
+    for T in temps:
+        cfg_t = TPVconfig(temp=T, material_name="blackbody",
+                          d=0.1, width_e=0.05, height_e=0.05, x_e=0, y_e=0)
+        m = PlanckModel(cfg_t)
+        curve = m._calculate_spectral_radiance(lambdas)
+        peak_lam = 2898e-6 / T
+        ax.plot(lambdas * 1e6, curve, label=f"{T} K")
+        ax.axvline(peak_lam * 1e6, linestyle=':', alpha=0.4)
+
+    ax.set_xlabel("Wavelength (μm)")
+    ax.set_ylabel("Spectral Radiance (W/m²/sr/m)")
+    ax.set_title("Planck Spectrum — Blackbody at Multiple Temperatures")
+    ax.legend()
+    ax.set_xlim(0, 5)
+    plt.tight_layout()
+    plt.savefig("plots/planck_spectra.png", dpi=150)
     plt.show()
 
-
-        
-#    phoE = (h_planck * c_light) / Lambda # Photon Energy E = hf, f = c/lambda
-#     thermE = k_boltz * temp_k # thermal energy = kT
-
-#     with np.errstate(over = 'ignore'):
-#         boltzFactor = np.exp(phoE/thermE) #Planck distribution factor. It’s what gives the blackbody curve its distinct "hill" shape.
-    
-#         planckSpectral = C1*(1/(boltzFactor -1))
-
-
-#     emissivity = selectiveEmit(energyBandGap, Lambda, materialProp["eps_high"], materialProp["eps_low"]) # Lambda is a vector or a np array
-    
-#     radiance = planckSpectral * emissivity
-
-#     return np.trapezoid(radiance,Lambda) 
+    # --- Validation: Stefan-Boltzmann ---
+    from physics_utils import radiant_exitance
+    print("\n--- Stefan-Boltzmann Validation ---")
+    print(f"{'T (K)':<10} {'Numerical (W/m²)':<20} {'σT⁴ (W/m²)':<20} {'Error %':<10}")
+    for T in temps:
+        cfg_t = TPVconfig(temp=T, material_name="blackbody",
+                          d=0.1, width_e=0.05, height_e=0.05, x_e=0, y_e=0)
+        m = PlanckModel(cfg_t)
+        numerical = m.get_total_power(lambdas) * np.pi  # hemisphere
+        analytical = radiant_exitance(T)
+        err = abs(numerical - analytical) / analytical * 100
+        print(f"{T:<10} {numerical:<20.2f} {analytical:<20.2f} {err:<10.3f}")

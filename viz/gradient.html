@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient ∇I — TPV Energy Flux</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0c0c0e; --surface:#151518; --border:#2a2a30;
+    --text:#e8e6df; --text-dim:#8a8880;
+    --accent:#e85d3a; --blue:#4a9eda; --green:#3dba7a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);}
+  a{color:var(--accent);text-decoration:none;} a:hover{text-decoration:underline;}
+  .top-bar{padding:16px 32px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;}
+  .container{max-width:860px;margin:0 auto;padding:40px 32px;}
+  h1{font-size:28px;font-weight:500;margin-bottom:6px;}
+  .sub{font-size:14px;color:var(--text-dim);margin-bottom:24px;}
+  .eq-block{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--blue);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin-bottom:24px;line-height:1.6;}
+  .viz-row{display:flex;gap:16px;flex-wrap:wrap;}
+  .viz-panel{flex:1;min-width:300px;}
+  canvas{display:block;width:100%;border-radius:6px;border:1px solid var(--border);background:var(--surface);}
+  .controls{display:flex;flex-wrap:wrap;gap:20px;margin-top:20px;padding:16px 0;}
+  .ctrl{display:flex;align-items:center;gap:10px;}
+  .ctrl-label{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);min-width:28px;}
+  input[type=range]{-webkit-appearance:none;width:150px;height:4px;background:var(--border);border-radius:2px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;}
+  .ctrl-val{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;min-width:70px;}
+  .stats{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 16px;flex:1;min-width:110px;}
+  .stat-label{font-size:11px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;margin-bottom:3px;}
+  .stat-val{font-size:18px;font-weight:500;}
+  .toggle{display:flex;gap:12px;margin-bottom:16px;}
+  .toggle button{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:6px 14px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text-dim);cursor:pointer;transition:all 0.15s;}
+  .toggle button.active{border-color:var(--accent);color:var(--accent);background:rgba(232,93,58,0.08);}
+  .toggle button:hover{border-color:var(--accent);}
+  @media(max-width:600px){.container{padding:24px 16px;} input[type=range]{width:110px;}}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="index.html">← TPV Energy Flux</a>
+  <span>STEP 03 / 09</span>
+</div>
+
+<div class="container">
+  <h1>Gradient Field ∇I</h1>
+  <p class="sub">Direction of steepest irradiance increase — arrows point toward the hot spot, magnitude peaks at ρ = d/√3</p>
+
+  <div class="eq-block">
+    ∇I = (∂I/∂x, ∂I/∂y) = −4C·(x, y) / (x² + y² + d²)³<br>
+    <span style="color:var(--text-dim)">|∇I| = 0 at center (maximum) · |∇I| peaks at ρ* = d/√3 · then decays</span>
+  </div>
+
+  <div class="toggle">
+    <button id="btnField" class="active" onclick="setView('field')">Gradient Field</button>
+    <button id="btnMag" onclick="setView('magnitude')">|∇I| vs ρ</button>
+    <button id="btnDir" onclick="setView('directional')">Directional Derivative</button>
+  </div>
+
+  <canvas id="viz" height="460"></canvas>
+
+  <div class="controls">
+    <div class="ctrl">
+      <span class="ctrl-label">T</span>
+      <input type="range" id="tSlider" min="500" max="4000" step="50" value="2000">
+      <span class="ctrl-val" id="tVal">2000 K</span>
+    </div>
+    <div class="ctrl">
+      <span class="ctrl-label">d</span>
+      <input type="range" id="dSlider" min="0.02" max="0.3" step="0.005" value="0.1">
+      <span class="ctrl-val" id="dVal">10.0 cm</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">ρ* = d/√3</div><div class="stat-val" id="sRho">—</div></div>
+    <div class="stat"><div class="stat-label">|∇I| at ρ*</div><div class="stat-val" id="sGmax">—</div></div>
+    <div class="stat"><div class="stat-label">∇I at center</div><div class="stat-val" id="sCenter">—</div></div>
+    <div class="stat"><div class="stat-label">I_max</div><div class="stat-val" id="sImax">—</div></div>
+  </div>
+</div>
+
+<script>
+const sigma=5.67e-8, PI=Math.PI;
+const canvas=document.getElementById('viz'), ctx=canvas.getContext('2d');
+let currentView='field';
+
+const Ae=0.01; // fixed emitter area for gradient demo
+
+function getC(T,d){return sigma*Math.pow(T,4)*Ae*d*d/PI;}
+function Ifn(x,y,C,d){const r2=x*x+y*y+d*d;return C/(r2*r2);}
+function dIdx(x,C,d,y){const r2=x*x+y*y+d*d;return -4*C*x/Math.pow(r2,3);}
+function dIdy(y,C,d,x){const r2=x*x+y*y+d*d;return -4*C*y/Math.pow(r2,3);}
+function gradMag(x,y,C,d){const gx=dIdx(x,C,d,y),gy=dIdy(y,C,d,x);return Math.sqrt(gx*gx+gy*gy);}
+
+function setView(v){
+  currentView=v;
+  document.querySelectorAll('.toggle button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(v==='field'?'btnField':v==='magnitude'?'btnMag':'btnDir').classList.add('active');
+  draw();
+}
+
+function inferno(t){
+  t=Math.max(0,Math.min(1,t));
+  const r=Math.min(255,Math.floor(t<0.5?t*2*200:200+(t-0.5)*2*55));
+  const g=Math.min(255,Math.floor(t<0.3?0:t<0.7?(t-0.3)/0.4*160:160+(t-0.7)/0.3*95));
+  const b2=Math.min(255,Math.floor(t<0.2?t/0.2*80:t<0.5?80-((t-0.2)/0.3)*60:20+(t-0.5)*2*20));
+  return [r,g,b2];
+}
+
+function drawArrow(cx,cy,dx,dy,len,ctx){
+  const angle=Math.atan2(dy,dx);
+  const ex=cx+dx*len, ey=cy+dy*len;
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(ex,ey);ctx.stroke();
+  const hs=4;
+  ctx.beginPath();
+  ctx.moveTo(ex,ey);
+  ctx.lineTo(ex-hs*Math.cos(angle-0.4),ey-hs*Math.sin(angle-0.4));
+  ctx.lineTo(ex-hs*Math.cos(angle+0.4),ey-hs*Math.sin(angle+0.4));
+  ctx.closePath();ctx.fill();
+}
+
+function draw(){
+  const T=+document.getElementById('tSlider').value;
+  const d=+document.getElementById('dSlider').value;
+  document.getElementById('tVal').textContent=T+' K';
+  document.getElementById('dVal').textContent=(d*100).toFixed(1)+' cm';
+
+  const C=getC(T,d);
+  const rhoStar=d/Math.sqrt(3);
+  const Imax=Ifn(0,0,C,d);
+  const gmaxVal=gradMag(rhoStar,0,C,d);
+
+  document.getElementById('sRho').textContent=(rhoStar*100).toFixed(2)+' cm';
+  document.getElementById('sGmax').textContent=gmaxVal.toExponential(2);
+  document.getElementById('sCenter').textContent='0 (max)';
+  document.getElementById('sImax').textContent=(Imax/1000).toFixed(1)+' kW/m²';
+
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.clientWidth, H=canvas.clientHeight;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const cellHalf=0.1;
+  const pad={l:52,r:20,t:28,b:48};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  if(currentView==='field'){
+    // heatmap background
+    const N=80;
+    const img=ctx.createImageData(N,N);
+    for(let j=0;j<N;j++){for(let i=0;i<N;i++){
+      const x=-cellHalf+i/(N-1)*2*cellHalf;
+      const y=-cellHalf+j/(N-1)*2*cellHalf;
+      const t=Math.min(1,Ifn(x,y,C,d)/Imax);
+      const [r,g,b]=inferno(t);
+      const idx=(j*N+i)*4;
+      img.data[idx]=r;img.data[idx+1]=g;img.data[idx+2]=b;img.data[idx+3]=255;
+    }}
+    const off=document.createElement('canvas');off.width=N;off.height=N;
+    off.getContext('2d').putImageData(img,0,0);
+    ctx.imageSmoothingEnabled=true;
+    ctx.drawImage(off,pad.l,pad.t,pw,ph);
+
+    // quiver arrows
+    const nArrows=14;
+    const maxGrad=gmaxVal;
+    ctx.strokeStyle='rgba(255,255,255,0.7)';ctx.fillStyle='rgba(255,255,255,0.7)';ctx.lineWidth=1;
+    for(let j=1;j<nArrows;j++){for(let i=1;i<nArrows;i++){
+      const x=-cellHalf+i/nArrows*2*cellHalf;
+      const y=-cellHalf+j/nArrows*2*cellHalf;
+      const gx=dIdx(x,C,d,y), gy=dIdy(y,C,d,x);
+      const gm=Math.sqrt(gx*gx+gy*gy);
+      if(gm<maxGrad*0.01)continue;
+      const px=pad.l+(x+cellHalf)/(2*cellHalf)*pw;
+      const py=pad.t+(y+cellHalf)/(2*cellHalf)*ph;
+      const scale=Math.min(1,gm/maxGrad)*pw/nArrows*0.4;
+      const nx=gx/gm, ny=gy/gm;
+      drawArrow(px,py,nx,-ny,scale,ctx);
+    }}
+
+    // ρ* circle
+    const rPx=rhoStar/(2*cellHalf)*pw;
+    ctx.beginPath();ctx.arc(pad.l+pw/2,pad.t+ph/2,rPx,0,Math.PI*2);
+    ctx.strokeStyle='rgba(61,186,122,0.5)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+    ctx.font="11px 'IBM Plex Mono',monospace";ctx.fillStyle='#3dba7a';ctx.textAlign='left';
+    ctx.fillText('ρ*=d/√3',pad.l+pw/2+rPx+6,pad.t+ph/2+4);
+
+    // hotspot crosshair
+    const cx=pad.l+pw/2,cy=pad.t+ph/2;
+    ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+
+    // axes labels
+    ctx.font="11px 'IBM Plex Sans',sans-serif";ctx.fillStyle='#8a8880';ctx.textAlign='center';
+    for(let g=0;g<=4;g++){
+      const v=(-cellHalf+g/4*2*cellHalf)*100;
+      ctx.fillText(v.toFixed(0),pad.l+pw*g/4,H-pad.b+18);
+      ctx.save();ctx.translate(pad.l-8,pad.t+ph*(1-g/4));ctx.textAlign='right';
+      ctx.fillText(v.toFixed(0),0,4);ctx.restore();
+    }
+    ctx.fillText('x (cm)',pad.l+pw/2,H-pad.b+38);
+    ctx.save();ctx.translate(14,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';
+    ctx.fillText('y (cm)',0,0);ctx.restore();
+    ctx.font="500 13px 'IBM Plex Sans',sans-serif";ctx.fillStyle='#e8e6df';
+    ctx.textAlign='center';ctx.fillText('Irradiance Contour + Gradient Quiver',pad.l+pw/2,pad.t-10);
+
+  } else if(currentView==='magnitude'){
+    // |∇I| vs ρ
+    ctx.strokeStyle='rgba(255,255,255,0.05)';ctx.lineWidth=0.5;
+    for(let g=0;g<=4;g++){const gy=pad.t+ph*g/4;ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(W-pad.r,gy);ctx.stroke();}
+
+    const nPts=300;
+    const rhoMax=cellHalf;
+    let pts=[];
+    for(let i=0;i<=nPts;i++){
+      const rho=i/nPts*rhoMax;
+      pts.push({rho,gm:gradMag(rho,0,C,d)});
+    }
+
+    ctx.beginPath();
+    for(let i=0;i<pts.length;i++){
+      const px=pad.l+pts[i].rho/rhoMax*pw;
+      const py=pad.t+(1-pts[i].gm/gmaxVal)*ph;
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle='#e85d3a';ctx.lineWidth=2;ctx.stroke();
+
+    // fill
+    ctx.lineTo(pad.l+pw,pad.t+ph);ctx.lineTo(pad.l,pad.t+ph);ctx.closePath();
+    ctx.fillStyle='rgba(232,93,58,0.06)';ctx.fill();
+
+    // ρ* marker
+    const rsPx=pad.l+rhoStar/rhoMax*pw;
+    ctx.beginPath();ctx.moveTo(rsPx,pad.t);ctx.lineTo(rsPx,pad.t+ph);
+    ctx.strokeStyle='#3dba7a';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);
+
+    const peakY=pad.t+(1-1)*ph;
+    ctx.beginPath();ctx.arc(rsPx,peakY,5,0,Math.PI*2);ctx.fillStyle='#3dba7a';ctx.fill();
+    ctx.font="11px 'IBM Plex Mono',monospace";ctx.fillStyle='#3dba7a';ctx.textAlign='left';
+    ctx.fillText('ρ* = d/√3 = '+(rhoStar*100).toFixed(2)+' cm',rsPx+10,peakY-8);
+
+    // zero at center annotation
+    ctx.font="11px 'IBM Plex Mono',monospace";ctx.fillStyle='#8a8880';ctx.textAlign='left';
+    ctx.fillText('∇I = 0 (hot spot)',pad.l+8,pad.t+ph-8);
+
+    // axes
+    ctx.strokeStyle='rgba(255,255,255,0.18)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+
+    ctx.font="11px 'IBM Plex Sans',sans-serif";ctx.fillStyle='#8a8880';ctx.textAlign='center';
+    for(let g=0;g<=5;g++){ctx.fillText((g/5*rhoMax*100).toFixed(1),pad.l+pw*g/5,H-pad.b+18);}
+    ctx.fillText('ρ (cm)',pad.l+pw/2,H-pad.b+38);
+    ctx.save();ctx.translate(14,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';
+    ctx.fillText('|∇I|',0,0);ctx.restore();
+    ctx.font="500 13px 'IBM Plex Sans',sans-serif";ctx.fillStyle='#e8e6df';
+    ctx.textAlign='center';ctx.fillText('Gradient Magnitude vs Radial Distance',pad.l+pw/2,pad.t-10);
+
+  } else {
+    // Directional derivative at a sample point
+    const sampleRho=rhoStar; // evaluate at ρ*
+    const sampleX=sampleRho, sampleY=0;
+    const gxS=dIdx(sampleX,C,d,sampleY), gyS=dIdy(sampleY,C,d,sampleX);
+    const gmS=Math.sqrt(gxS*gxS+gyS*gyS);
+
+    // polar plot of D_u I at sample point
+    const cx=pad.l+pw/2, cy=pad.t+ph/2;
+    const R=Math.min(pw,ph)/2-30;
+
+    // circles
+    for(let r=0.25;r<=1;r+=0.25){
+      ctx.beginPath();ctx.arc(cx,cy,R*r,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=0.5;ctx.stroke();
+    }
+    // axes
+    ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(cx-R,cy);ctx.lineTo(cx+R,cy);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);ctx.stroke();
+
+    // directional derivative curve
+    const nA=360;
+    ctx.beginPath();
+    for(let i=0;i<=nA;i++){
+      const angle=i/nA*2*PI;
+      const ux=Math.cos(angle), uy=Math.sin(angle);
+      const DuI=gxS*ux+gyS*uy; // ∇I · û
+      const norm=DuI/gmS; // normalized to [-1,1]
+      const r=Math.abs(norm)*R*0.9;
+      const px=cx+r*Math.cos(angle), py=cy-r*Math.sin(angle);
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    ctx.strokeStyle='#e85d3a';ctx.lineWidth=2;ctx.stroke();
+
+    // positive fill
+    ctx.beginPath();
+    for(let i=0;i<=nA;i++){
+      const angle=i/nA*2*PI;
+      const ux=Math.cos(angle), uy=Math.sin(angle);
+      const DuI=gxS*ux+gyS*uy;
+      if(DuI>=0){
+        const norm=DuI/gmS;
+        const r=norm*R*0.9;
+        const px=cx+r*Math.cos(angle), py=cy-r*Math.sin(angle);
+        ctx.lineTo(px,py);
+      } else {
+        ctx.lineTo(cx,cy);
+      }
+    }
+    ctx.closePath();ctx.fillStyle='rgba(232,93,58,0.12)';ctx.fill();
+
+    // negative fill
+    ctx.beginPath();
+    for(let i=0;i<=nA;i++){
+      const angle=i/nA*2*PI;
+      const ux=Math.cos(angle), uy=Math.sin(angle);
+      const DuI=gxS*ux+gyS*uy;
+      if(DuI<0){
+        const norm=Math.abs(DuI)/gmS;
+        const r=norm*R*0.9;
+        const px=cx+r*Math.cos(angle), py=cy-r*Math.sin(angle);
+        ctx.lineTo(px,py);
+      } else {
+        ctx.lineTo(cx,cy);
+      }
+    }
+    ctx.closePath();ctx.fillStyle='rgba(74,158,218,0.1)';ctx.fill();
+
+    // gradient direction arrow
+    const gAngle=Math.atan2(-gyS,gxS);
+    ctx.beginPath();ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+R*0.7*Math.cos(gAngle),cy-R*0.7*Math.sin(gAngle));
+    ctx.strokeStyle='#3dba7a';ctx.lineWidth=2;ctx.stroke();
+    ctx.font="500 12px 'IBM Plex Mono',monospace";ctx.fillStyle='#3dba7a';
+    ctx.textAlign='left';
+    ctx.fillText('∇I direction',cx+R*0.72*Math.cos(gAngle),cy-R*0.72*Math.sin(gAngle)-8);
+
+    // labels
+    ctx.font="11px 'IBM Plex Mono',monospace";ctx.fillStyle='#8a8880';
+    ctx.textAlign='center';
+    ctx.fillText('+x',cx+R+14,cy+4);ctx.fillText('-x',cx-R-14,cy+4);
+    ctx.fillText('+y',cx,cy-R-8);ctx.fillText('-y',cx,cy+R+14);
+
+    ctx.font="11px 'IBM Plex Mono',monospace";ctx.fillStyle='var(--accent)';
+    ctx.textAlign='left';ctx.fillText('D_û I > 0 (increasing)',pad.l+8,pad.t+16);
+    ctx.fillStyle='#4a9eda';ctx.fillText('D_û I < 0 (decreasing)',pad.l+8,pad.t+32);
+    ctx.fillStyle='#8a8880';ctx.fillText('at ρ* = ('+((sampleX*100).toFixed(1))+', 0) cm',pad.l+8,pad.t+48);
+
+    ctx.font="500 13px 'IBM Plex Sans',sans-serif";ctx.fillStyle='#e8e6df';
+    ctx.textAlign='center';ctx.fillText('Directional Derivative D_û I — Polar Plot',pad.l+pw/2,pad.t-10);
+  }
+}
+
+['tSlider','dSlider'].forEach(id=>document.getElementById(id).oninput=draw);
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

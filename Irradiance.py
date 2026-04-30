@@ -9,9 +9,8 @@ Difference between PV vs TPV - for PV emitter is far and irradiance is the same.
 
 import numpy as np
 import matplotlib as mpt
-from planckSpectrumModel import stefboltz
 from TPVconfig import TPVconfig
-from physics_utils import physics_utils
+from physics_utils import steradian_power
 # =============================================================
 # =============================================================
 # 
@@ -20,7 +19,7 @@ class IrradianceModel:
 
     def __init__(self, config: TPVconfig):
         self.cfg = config
-        self.temp = self.config.temp
+        self.temp = self.cfg.temp
         self.x_e = self.cfg.x_e
         self.y_e = self.cfg.y_e
         self.d = self.cfg.d
@@ -31,7 +30,7 @@ class IrradianceModel:
         self.dA_e = self.cfg.dA_e
 
     def _point_2_point_contribution(self, x,y, xe, ye):
-        L = physics_utils.steradianPower(self.temp)
+        L = steradian_power(self.temp)
 
         r_squared = (x - xe)**2 + (y- ye)**2 + self.d**2
 
@@ -51,7 +50,53 @@ class IrradianceModel:
         return np.sum(all_contributions) * self.dA_e
         
 
+# # =============================================================
+## Guard 
 
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    from TPVconfig import TPVconfig
+
+    cfg = TPVconfig(temp=2000, material_name="blackbody",
+                    d=0.1, width_e=0.05, height_e=0.05, x_e=0, y_e=0)
+    model = IrradianceModel(cfg)
+
+    # --- Plot 1: Surface plot ---
+    x = np.linspace(-0.1, 0.1, 80)
+    y = np.linspace(-0.1, 0.1, 80)
+    X, Y = np.meshgrid(x, y)
+    I_vect = np.vectorize(model.calculate_Irradiance)
+    Z = I_vect(X, Y)
+
+    fig = plt.figure(figsize=(12, 5))
+
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax1.plot_surface(X * 100, Y * 100, Z / 1000, cmap='inferno', alpha=0.9)
+    ax1.set_xlabel("x (cm)")
+    ax1.set_ylabel("y (cm)")
+    ax1.set_zlabel("I (kW/m²)")
+    ax1.set_title("Irradiance I(x,y) — Surface")
+
+    # --- Plot 2: Contour plot ---
+    ax2 = fig.add_subplot(122)
+    c = ax2.contourf(X * 100, Y * 100, Z / 1000, levels=20, cmap='inferno')
+    plt.colorbar(c, ax=ax2, label="I (kW/m²)")
+    ax2.set_xlabel("x (cm)")
+    ax2.set_ylabel("y (cm)")
+    ax2.set_title("Irradiance I(x,y) — Contour")
+    ax2.set_aspect('equal')
+
+    plt.tight_layout()
+    plt.savefig("plots/irradiance_surface_contour.png", dpi=150)
+    plt.show()
+
+    # --- Validation: center irradiance ---
+    from physics_utils import radiant_exitance, steradian_power
+    I_center = model.calculate_Irradiance(0, 0)
+    A_e = cfg.width_e * cfg.height_e
+    I_expected = steradian_power(cfg.temp) * A_e * cfg.d**2 / (cfg.d**2)**2
+    print(f"\nI(0,0) = {I_center:.2f} W/m²")
+    print(f"Expected (point-source) = {I_expected:.2f} W/m²")
  
 # # =============================================================
 # # irradiance at any arbitrary(x,y) 

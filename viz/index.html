@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TPV Energy Flux — Interactive Demos</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0c0e;
+    --surface: #151518;
+    --border: #2a2a30;
+    --text: #e8e6df;
+    --text-dim: #8a8880;
+    --accent: #e85d3a;
+    --accent-glow: rgba(232, 93, 58, 0.15);
+    --blue: #4a9eda;
+    --green: #3dba7a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .grain {
+    position: fixed; inset: 0; pointer-events: none; z-index: 100;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    background-size: 256px 256px;
+  }
+  header {
+    padding: 80px 40px 40px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-size: 42px;
+    font-weight: 600;
+    line-height: 1.15;
+    margin-bottom: 20px;
+    letter-spacing: -0.5px;
+  }
+  h1 span { color: var(--accent); }
+  .subtitle {
+    font-size: 17px;
+    font-weight: 300;
+    color: var(--text-dim);
+    line-height: 1.6;
+    max-width: 640px;
+  }
+  .pipeline {
+    max-width: 900px;
+    margin: 40px auto 20px;
+    padding: 0 40px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .pipeline .stage {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .pipeline .stage.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+  }
+  .pipeline .arrow {
+    padding: 0 8px;
+    color: var(--border);
+  }
+  .cards {
+    max-width: 900px;
+    margin: 50px auto;
+    padding: 0 40px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .card {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.2s, transform 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+  .card::after {
+    content: '→';
+    position: absolute;
+    top: 32px; right: 32px;
+    font-size: 20px;
+    color: var(--text-dim);
+    transition: color 0.2s, transform 0.2s;
+  }
+  .card:hover::after { color: var(--accent); transform: translateX(4px); }
+  .card-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  .card h2 {
+    font-size: 22px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  .card p {
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    max-width: 520px;
+  }
+  .card .eq {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--blue);
+    margin-top: 14px;
+    opacity: 0.8;
+  }
+  footer {
+    max-width: 900px;
+    margin: 60px auto;
+    padding: 30px 40px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  @media (max-width: 600px) {
+    header { padding: 50px 20px 30px; }
+    h1 { font-size: 28px; }
+    .cards { padding: 0 20px; }
+    .card { padding: 24px; }
+    .pipeline { padding: 0 20px; }
+    footer { padding: 20px; flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<header>
+  <div class="tag">Interactive Demos</div>
+  <h1>TPV <span>Energy Flux</span> Simulation</h1>
+  <p class="subtitle">
+    First-principles thermophotovoltaic simulation — the energy-harvest
+    module for a Dyson swarm. Explore the conversion chain from thermal
+    emission to spatial irradiance to gradient analysis.
+  </p>
+</header>
+
+<div class="pipeline">
+  <div class="stage active">B(λ,T)</div>
+  <div class="arrow">→</div>
+  <div class="stage active">I(x,y)</div>
+  <div class="arrow">→</div>
+  <div class="stage active">∇I</div>
+  <div class="arrow">→</div>
+  <div class="stage">F₁₂</div>
+  <div class="arrow">→</div>
+  <div class="stage">J_ph</div>
+  <div class="arrow">→</div>
+  <div class="stage">I-V</div>
+  <div class="arrow">→</div>
+  <div class="stage">η_total</div>
+</div>
+
+<div class="cards">
+  <a class="card" href="planck.html">
+    <div class="card-num">STEP 01</div>
+    <h2>Planck Spectrum</h2>
+    <p>Spectral radiance of a blackbody emitter. Drag temperature to shift the peak,
+       set bandgap to see how much radiation the cell can actually use.</p>
+    <div class="eq">B(λ,T) = (2hc²/λ⁵) · 1/(e^(hc/λkT) − 1)</div>
+  </a>
+
+  <a class="card" href="irradiance.html">
+    <div class="card-num">STEP 02</div>
+    <h2>Irradiance Field I(x,y)</h2>
+    <p>Spatial power distribution on the cell surface. The center gets the most —
+       edges fall off by inverse-fourth power. The scalar field that drives all the MVC.</p>
+    <div class="eq">I(x,y) = (σT⁴·A_e·d²) / (π·(x²+y²+d²)²)</div>
+  </a>
+
+  <a class="card" href="gradient.html">
+    <div class="card-num">STEP 03</div>
+    <h2>Gradient Field ∇I</h2>
+    <p>Direction and rate of steepest irradiance change at every point.
+       Arrows point toward the hot spot. Magnitude peaks at ρ = d/√3.</p>
+    <div class="eq">∇I = −4C·(x,y) / (x²+y²+d²)³</div>
+  </a>
+</div>
+
+<footer>
+  <span>Calc III Honors · CCSF</span>
+  <a href="https://github.com/aungkhnt/TPV-energy-sims">GitHub →</a>
+</footer>
+</body>
+</html>

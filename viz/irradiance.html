@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Irradiance I(x,y) — TPV Energy Flux</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0c0e; --surface: #151518; --border: #2a2a30;
+    --text: #e8e6df; --text-dim: #8a8880;
+    --accent: #e85d3a; --blue: #4a9eda; --green: #3dba7a;
+  }
+  * { margin:0;padding:0;box-sizing:border-box; }
+  body { font-family:'IBM Plex Sans',sans-serif; background:var(--bg); color:var(--text); }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .top-bar { padding:16px 32px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-dim); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; }
+  .container { max-width:860px; margin:0 auto; padding:40px 32px; }
+  h1 { font-size:28px; font-weight:500; margin-bottom:6px; }
+  .sub { font-size:14px; color:var(--text-dim); margin-bottom:24px; }
+  .eq-block { font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--blue); background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:14px 18px; margin-bottom:24px; }
+
+  .viz-row { display:flex; gap:16px; flex-wrap:wrap; }
+  .viz-panel { flex:1; min-width:300px; }
+  canvas { display:block; width:100%; border-radius:6px; border:1px solid var(--border); background:var(--surface); }
+
+  .controls { display:flex; flex-wrap:wrap; gap:20px; margin-top:20px; padding:16px 0; }
+  .ctrl { display:flex; align-items:center; gap:10px; }
+  .ctrl-label { font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-dim); min-width:28px; }
+  input[type=range] { -webkit-appearance:none; width:150px; height:4px; background:var(--border); border-radius:2px; outline:none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; }
+  .ctrl-val { font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:500; min-width:70px; }
+
+  .stats { display:flex; gap:12px; margin-top:16px; flex-wrap:wrap; }
+  .stat { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px 16px; flex:1; min-width:110px; }
+  .stat-label { font-size:11px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; margin-bottom:3px; }
+  .stat-val { font-size:18px; font-weight:500; }
+
+  .colorbar { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:11px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; }
+  .colorbar-grad { flex:1; height:12px; border-radius:3px; border:1px solid var(--border); }
+
+  @media(max-width:600px){ .container{padding:24px 16px;} input[type=range]{width:110px;} }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="index.html">← TPV Energy Flux</a>
+  <span>STEP 02 / 09</span>
+</div>
+
+<div class="container">
+  <h1>Irradiance Field I(x, y)</h1>
+  <p class="sub">Spatial power distribution on the TPV cell — bell-shaped, not Gaussian, radially symmetric</p>
+
+  <div class="eq-block">
+    I(x,y) = (σT⁴ · A_e · d²) / (π · (x² + y² + d²)²)<br>
+    <span style="color:var(--text-dim)">independent: x, y · parameters: T, d, A_e · I ∝ 1/r⁴ falloff</span>
+  </div>
+
+  <div class="viz-row">
+    <div class="viz-panel">
+      <canvas id="heatmap" height="400"></canvas>
+      <div class="colorbar">
+        <span>0</span>
+        <div class="colorbar-grad" id="cbar"></div>
+        <span id="cbar-max">—</span>
+        <span>kW/m²</span>
+      </div>
+    </div>
+    <div class="viz-panel">
+      <canvas id="profile" height="400"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl">
+      <span class="ctrl-label">T</span>
+      <input type="range" id="tSlider" min="500" max="4000" step="50" value="2000">
+      <span class="ctrl-val" id="tVal">2000 K</span>
+    </div>
+    <div class="ctrl">
+      <span class="ctrl-label">d</span>
+      <input type="range" id="dSlider" min="0.02" max="0.3" step="0.005" value="0.1">
+      <span class="ctrl-val" id="dVal">10.0 cm</span>
+    </div>
+    <div class="ctrl">
+      <span class="ctrl-label">A<sub>e</sub></span>
+      <input type="range" id="aSlider" min="0.001" max="0.05" step="0.001" value="0.01">
+      <span class="ctrl-val" id="aVal">100 cm²</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">I_max (center)</div><div class="stat-val" id="sMax">—</div></div>
+    <div class="stat"><div class="stat-label">I_edge (±5cm)</div><div class="stat-val" id="sEdge">—</div></div>
+    <div class="stat"><div class="stat-label">Falloff ratio</div><div class="stat-val" id="sRatio">—</div></div>
+    <div class="stat"><div class="stat-label">Total emitted</div><div class="stat-val" id="sTotal">—</div></div>
+  </div>
+</div>
+
+<script>
+const sigma=5.67e-8, PI=Math.PI;
+const heatC=document.getElementById('heatmap'), heatCtx=heatC.getContext('2d');
+const profC=document.getElementById('profile'), profCtx=profC.getContext('2d');
+
+function I(x,y,T,d,Ae){
+  const C=sigma*Math.pow(T,4)*Ae*d*d/PI;
+  const r2=x*x+y*y+d*d;
+  return C/(r2*r2);
+}
+
+// inferno-inspired colormap
+function inferno(t){
+  t=Math.max(0,Math.min(1,t));
+  const r=Math.min(255,Math.floor(t<0.5?t*2*200:200+(t-0.5)*2*55));
+  const g=Math.min(255,Math.floor(t<0.3?0:t<0.7?(t-0.3)/0.4*160:160+(t-0.7)/0.3*95));
+  const b=Math.min(255,Math.floor(t<0.2?t/0.2*80:t<0.5?80-((t-0.2)/0.3)*60:20+(t-0.5)*2*20));
+  return `rgb(${r},${g},${b})`;
+}
+
+function draw(){
+  const T=+document.getElementById('tSlider').value;
+  const d=+document.getElementById('dSlider').value;
+  const Ae=+document.getElementById('aSlider').value;
+  document.getElementById('tVal').textContent=T+' K';
+  document.getElementById('dVal').textContent=(d*100).toFixed(1)+' cm';
+  document.getElementById('aVal').textContent=(Ae*1e4).toFixed(0)+' cm²';
+
+  const cellHalf=0.1; // ±10cm
+  const Imax=I(0,0,T,d,Ae);
+  const Iedge=I(0.05,0,T,d,Ae);
+  document.getElementById('sMax').textContent=(Imax/1000).toFixed(1)+' kW/m²';
+  document.getElementById('sEdge').textContent=(Iedge/1000).toFixed(2)+' kW/m²';
+  document.getElementById('sRatio').textContent=(Imax/Iedge).toFixed(1)+'×';
+  document.getElementById('sTotal').textContent=(sigma*Math.pow(T,4)*Ae).toFixed(1)+' W';
+
+  // Heatmap
+  const dpr=window.devicePixelRatio||1;
+  const W1=heatC.clientWidth, H1=heatC.clientHeight;
+  heatC.width=W1*dpr; heatC.height=H1*dpr;
+  heatCtx.setTransform(dpr,0,0,dpr,0,0);
+
+  const pad={l:44,r:12,t:28,b:44};
+  const pw=W1-pad.l-pad.r, ph=H1-pad.t-pad.b;
+  const N=100;
+
+  const img=heatCtx.createImageData(N,N);
+  for(let j=0;j<N;j++){
+    for(let i=0;i<N;i++){
+      const x=-cellHalf+i/(N-1)*2*cellHalf;
+      const y=-cellHalf+j/(N-1)*2*cellHalf;
+      const val=I(x,y,T,d,Ae);
+      const t=Math.min(1,val/Imax);
+      const idx=(j*N+i)*4;
+      // parse inferno
+      const tc=Math.max(0,Math.min(1,t));
+      img.data[idx]=Math.min(255,Math.floor(tc<0.5?tc*2*200:200+(tc-0.5)*2*55));
+      img.data[idx+1]=Math.min(255,Math.floor(tc<0.3?0:tc<0.7?(tc-0.3)/0.4*160:160+(tc-0.7)/0.3*95));
+      img.data[idx+2]=Math.min(255,Math.floor(tc<0.2?tc/0.2*80:tc<0.5?80-((tc-0.2)/0.3)*60:20+(tc-0.5)*2*20));
+      img.data[idx+3]=255;
+    }
+  }
+  // draw to offscreen then scale
+  const off=document.createElement('canvas');off.width=N;off.height=N;
+  off.getContext('2d').putImageData(img,0,0);
+
+  heatCtx.clearRect(0,0,W1,H1);
+  heatCtx.imageSmoothingEnabled=true;
+  heatCtx.drawImage(off,pad.l,pad.t,pw,ph);
+
+  // border
+  heatCtx.strokeStyle='rgba(255,255,255,0.1)';heatCtx.lineWidth=1;
+  heatCtx.strokeRect(pad.l,pad.t,pw,ph);
+
+  // axes labels
+  heatCtx.font="11px 'IBM Plex Sans',sans-serif";heatCtx.fillStyle='#8a8880';heatCtx.textAlign='center';
+  for(let g=0;g<=4;g++){
+    const v=(-cellHalf+g/4*2*cellHalf)*100;
+    heatCtx.fillText(v.toFixed(0),pad.l+pw*g/4,H1-pad.b+18);
+    heatCtx.save();heatCtx.translate(pad.l-8,pad.t+ph*(1-g/4));heatCtx.textAlign='right';
+    heatCtx.fillText(v.toFixed(0),0,4);heatCtx.restore();
+  }
+  heatCtx.fillText('x (cm)',pad.l+pw/2,H1-pad.b+36);
+  heatCtx.save();heatCtx.translate(12,pad.t+ph/2);heatCtx.rotate(-Math.PI/2);heatCtx.textAlign='center';
+  heatCtx.fillText('y (cm)',0,0);heatCtx.restore();
+
+  // title
+  heatCtx.font="500 13px 'IBM Plex Sans',sans-serif";heatCtx.fillStyle='#e8e6df';
+  heatCtx.textAlign='center';heatCtx.fillText('I(x,y) Heatmap',pad.l+pw/2,pad.t-10);
+
+  // hotspot marker
+  const cx=pad.l+pw/2, cy=pad.t+ph/2;
+  heatCtx.beginPath();heatCtx.arc(cx,cy,3,0,Math.PI*2);
+  heatCtx.strokeStyle='#fff';heatCtx.lineWidth=1.5;heatCtx.stroke();
+  heatCtx.beginPath();heatCtx.moveTo(cx-8,cy);heatCtx.lineTo(cx+8,cy);heatCtx.moveTo(cx,cy-8);heatCtx.lineTo(cx,cy+8);
+  heatCtx.strokeStyle='rgba(255,255,255,0.4)';heatCtx.lineWidth=0.5;heatCtx.stroke();
+
+  // colorbar gradient
+  const cbar=document.getElementById('cbar');
+  cbar.style.background=`linear-gradient(to right, ${inferno(0)}, ${inferno(0.25)}, ${inferno(0.5)}, ${inferno(0.75)}, ${inferno(1)})`;
+  document.getElementById('cbar-max').textContent=(Imax/1000).toFixed(1);
+
+  // Profile plot
+  const W2=profC.clientWidth, H2=profC.clientHeight;
+  profC.width=W2*dpr; profC.height=H2*dpr;
+  profCtx.setTransform(dpr,0,0,dpr,0,0);
+  profCtx.clearRect(0,0,W2,H2);
+
+  const pp={l:52,r:16,t:28,b:44};
+  const ppw=W2-pp.l-pp.r, pph=H2-pp.t-pp.b;
+
+  // grid
+  profCtx.strokeStyle='rgba(255,255,255,0.05)';profCtx.lineWidth=0.5;
+  for(let g=0;g<=4;g++){const gy=pp.t+pph*g/4;profCtx.beginPath();profCtx.moveTo(pp.l,gy);profCtx.lineTo(W2-pp.r,gy);profCtx.stroke();}
+
+  // profile line
+  const nPts=200;
+  profCtx.beginPath();
+  for(let i=0;i<=nPts;i++){
+    const x=-cellHalf+i/nPts*2*cellHalf;
+    const val=I(x,0,T,d,Ae);
+    const px=pp.l+i/nPts*ppw;
+    const py=pp.t+(1-val/Imax)*pph;
+    i===0?profCtx.moveTo(px,py):profCtx.lineTo(px,py);
+  }
+  profCtx.strokeStyle='#e85d3a';profCtx.lineWidth=2;profCtx.stroke();
+
+  // fill under curve
+  profCtx.lineTo(pp.l+ppw,pp.t+pph);profCtx.lineTo(pp.l,pp.t+pph);profCtx.closePath();
+  profCtx.fillStyle='rgba(232,93,58,0.08)';profCtx.fill();
+
+  // 1/d² reference annotation
+  profCtx.font="11px 'IBM Plex Mono',monospace";profCtx.fillStyle='#8a8880';
+  profCtx.textAlign='left';
+  profCtx.fillText('∝ 1/(x²+d²)²',pp.l+ppw*0.6,pp.t+pph*0.3);
+
+  // axes
+  profCtx.strokeStyle='rgba(255,255,255,0.18)';profCtx.lineWidth=1;
+  profCtx.beginPath();profCtx.moveTo(pp.l,pp.t);profCtx.lineTo(pp.l,H2-pp.b);profCtx.lineTo(W2-pp.r,H2-pp.b);profCtx.stroke();
+
+  // labels
+  profCtx.font="11px 'IBM Plex Sans',sans-serif";profCtx.fillStyle='#8a8880';profCtx.textAlign='center';
+  for(let g=0;g<=4;g++){
+    const v=(-cellHalf+g/4*2*cellHalf)*100;
+    profCtx.fillText(v.toFixed(0),pp.l+ppw*g/4,H2-pp.b+18);
+  }
+  profCtx.fillText('x (cm)',pp.l+ppw/2,H2-pp.b+36);
+  profCtx.save();profCtx.translate(14,pp.t+pph/2);profCtx.rotate(-Math.PI/2);
+  profCtx.textAlign='center';profCtx.fillText('I(x, 0)',0,0);profCtx.restore();
+
+  profCtx.font="500 13px 'IBM Plex Sans',sans-serif";profCtx.fillStyle='#e8e6df';
+  profCtx.textAlign='center';profCtx.fillText('Cross-Section y = 0',pp.l+ppw/2,pp.t-10);
+}
+
+['tSlider','dSlider','aSlider'].forEach(id=>document.getElementById(id).oninput=draw);
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>
